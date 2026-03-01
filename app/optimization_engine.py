@@ -50,9 +50,21 @@ def optimize(date, user_lat, user_lon,
     if df_global is None:
         return {"error": "Dataset not loaded on server"}
 
-    day_df = df_global[df_global["date"] == date].copy()
+    # Convert input date string into components
+    input_date = pd.to_datetime(date)
+
+    year = input_date.year
+    month = input_date.month
+    day = input_date.day
+
+    day_df = df_global[
+        (df_global["year"] == year) &
+        (df_global["month"] == month) &
+        (df_global["day"] == day)
+        ].copy()
+
     if day_df.empty:
-        return {"error": "No data for selected date"}
+        return {"error": "No data found for selected date"}
 
     weights = get_weights(age_group, health_condition)
 
