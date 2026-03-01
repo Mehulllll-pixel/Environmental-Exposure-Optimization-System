@@ -7,7 +7,7 @@ from .models import ExposureLog
 from .database import SessionLocal
 
 # 🔥 Load dataset at startup
-DATA_PATH = os.path.join(os.path.dirname(__file__), "data.csv")
+DATA_PATH = os.path.join(os.path.dirname(__file__), "delhi_forecasting_dataset.csv")
 
 if os.path.exists(DATA_PATH):
     df_global = pd.read_csv(DATA_PATH)
