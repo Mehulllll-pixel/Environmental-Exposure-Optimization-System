@@ -1,15 +1,18 @@
 import numpy as np
 import pandas as pd
+import os
 from .vulnerability_engine import get_weights
 from .explanation_engine import generate_explanation
 from .models import ExposureLog
 from .database import SessionLocal
 
-df_global = None
+# 🔥 Load dataset at startup
+DATA_PATH = os.path.join(os.path.dirname(__file__), "data.csv")
 
-def set_data(df):
-    global df_global
-    df_global = df
+if os.path.exists(DATA_PATH):
+    df_global = pd.read_csv(DATA_PATH)
+else:
+    df_global = None
 
 
 def categorize_risk(score):
@@ -45,11 +48,11 @@ def optimize(date, user_lat, user_lon,
              duration_hours=1):
 
     if df_global is None:
-        return None
+        return {"error": "Dataset not loaded on server"}
 
     day_df = df_global[df_global["date"] == date].copy()
     if day_df.empty:
-        return None
+        return {"error": "No data for selected date"}
 
     weights = get_weights(age_group, health_condition)
 
