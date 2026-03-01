@@ -18,6 +18,33 @@ if os.path.exists(MODEL_PATH):
     model = xgb.XGBRegressor()
     model.load_model(MODEL_PATH)
     print("✅ XGBoost model loaded successfully")
+
+    # 🔥 Optional: Evaluate model if dataset exists
+    try:
+        from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+        import numpy as np
+
+        if os.path.exists(DATA_PATH):
+            temp_df = pd.read_csv(DATA_PATH)
+            feature_cols = ["pm10", "no2", "o3", "co", "temperature", "humidity"]
+            target_col = "pm25"
+
+            if all(col in temp_df.columns for col in feature_cols + [target_col]):
+                X = temp_df[feature_cols]
+                y = temp_df[target_col]
+                preds = model.predict(X)
+
+                rmse = np.sqrt(mean_squared_error(y, preds))
+                mae = mean_absolute_error(y, preds)
+                r2 = r2_score(y, preds)
+
+                print(f"📊 Model RMSE: {rmse:.2f}")
+                print(f"📊 Model MAE: {mae:.2f}")
+                print(f"📊 Model R2: {r2:.2f}")
+
+    except Exception as e:
+        print("⚠️ Model evaluation skipped:", e)
+
 else:
     model = None
     print("⚠️ XGBoost model not found — using raw PM2.5")

@@ -89,3 +89,78 @@ def exposure_summary(user_id: str = "anonymous_user"):
         "most_visited_station": most_station[0] if most_station else None,
         "risk_distribution": dict(risk_counts)
     }
+@app.get("/feature-importance")
+def feature_importance():
+    from .optimization_engine import model
+
+    if model is None:
+        return {"error": "Model not loaded"}
+
+    booster = model.get_booster()
+    importance = booster.get_score(importance_type="weight")
+
+    return {"feature_importance": importance}
+@app.get("/pevi-trend")
+def pevi_trend():
+    from .database import SessionLocal
+    from .models import ExposureLog
+    from sqlalchemy import func
+
+    db = SessionLocal()
+
+    results = (
+        db.query(
+            ExposureLog.date,
+            func.avg(ExposureLog.pevi_score).label("avg_pevi")
+        )
+        .group_by(ExposureLog.date)
+        .order_by(ExposureLog.date)
+        .all()
+    )
+
+    db.close()
+
+    trend = [{"date": r.date, "avg_pevi": float(r.avg_pevi)} for r in results]
+
+    return {"trend": trend}
+@app.get("/download-report")
+def download_report():
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+    from reportlab.lib.styles import getSampleStyleSheet
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import letter
+    from reportlab.platypus import Table
+    from io import BytesIO
+    from fastapi.responses import StreamingResponse
+    from .database import SessionLocal
+    from .models import ExposureLog
+
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=letter)
+    elements = []
+    styles = getSampleStyleSheet()
+
+    db = SessionLocal()
+    logs = db.query(ExposureLog).all()
+    db.close()
+
+    elements.append(Paragraph("Exposure Report Summary", styles["Heading1"]))
+    elements.append(Spacer(1, 12))
+
+    data = [["Date", "Station", "PEVI", "Risk"]]
+
+    for log in logs:
+        data.append([
+            str(log.date),
+            log.station,
+            str(log.pevi_score),
+            log.risk_level
+        ])
+
+    table = Table(data)
+    elements.append(table)
+
+    doc.build(elements)
+    buffer.seek(0)
+
+    return StreamingResponse(buffer, media_type="application/pdf")
