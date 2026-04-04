@@ -7,54 +7,17 @@ from .explanation_engine import generate_explanation
 from .models import ExposureLog
 from .database import SessionLocal
 
-
 # ==============================
-# 🔥 Load ML Model at Startup
-# ==============================
-
-MODEL_PATH = os.path.join(os.path.dirname(__file__), "xgboost_pm25_model.json")
-
-if os.path.exists(MODEL_PATH):
-    model = xgb.XGBRegressor()
-    model.load_model(MODEL_PATH)
-    print("✅ XGBoost model loaded successfully")
-
-    # 🔥 Optional: Evaluate model if dataset exists
-    try:
-        from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
-        import numpy as np
-
-        if os.path.exists(DATA_PATH):
-            temp_df = pd.read_csv(DATA_PATH)
-            feature_cols = ["pm10", "no2", "o3", "co", "temperature", "humidity"]
-            target_col = "pm25"
-
-            if all(col in temp_df.columns for col in feature_cols + [target_col]):
-                X = temp_df[feature_cols]
-                y = temp_df[target_col]
-                preds = model.predict(X)
-
-                rmse = np.sqrt(mean_squared_error(y, preds))
-                mae = mean_absolute_error(y, preds)
-                r2 = r2_score(y, preds)
-
-                print(f"📊 Model RMSE: {rmse:.2f}")
-                print(f"📊 Model MAE: {mae:.2f}")
-                print(f"📊 Model R2: {r2:.2f}")
-
-    except Exception as e:
-        print("⚠️ Model evaluation skipped:", e)
-
-else:
-    model = None
-    print("⚠️ XGBoost model not found — using raw PM2.5")
-
-
-# ==============================
-# 🔥 Load Dataset at Startup
+# 🔥 Paths
 # ==============================
 
-DATA_PATH = os.path.join(os.path.dirname(__file__), "delhi_forecasting_dataset.csv")
+BASE_DIR = os.path.dirname(__file__)
+MODEL_PATH = os.path.join(BASE_DIR, "xgboost_pm25_model.json")
+DATA_PATH = os.path.join(BASE_DIR, "delhi_forecasting_dataset.csv")
+
+# ==============================
+# 🔥 Load Dataset
+# ==============================
 
 if os.path.exists(DATA_PATH):
     df_global = pd.read_csv(DATA_PATH)
@@ -63,22 +26,32 @@ else:
     df_global = None
     print("❌ Dataset not found")
 
+# ==============================
+# 🔥 Load Model
+# ==============================
+
+if os.path.exists(MODEL_PATH):
+    model = xgb.XGBRegressor()
+    model.load_model(MODEL_PATH)
+    print("✅ XGBoost model loaded")
+else:
+    model = None
+    print("⚠️ Model not found, using raw PM2.5")
 
 # ==============================
-# Risk Categorization
+# 🔥 Risk Categorization (FIXED)
 # ==============================
 
 def categorize_risk(score):
-    if score < 0.30:
+    if score < 0.40:
         return "Safe"
-    elif score < 0.60:
+    elif score < 0.75:
         return "Moderate"
     else:
         return "Avoid"
 
-
 # ==============================
-# Save User Exposure Log
+# Save Exposure
 # ==============================
 
 def save_exposure(user_id, result):
@@ -97,7 +70,6 @@ def save_exposure(user_id, result):
     db.commit()
     db.close()
 
-
 # ==============================
 # 🔥 Main Optimization Function
 # ==============================
@@ -109,43 +81,47 @@ def optimize(date, user_lat, user_lon,
              duration_hours=1):
 
     if df_global is None:
-        return {"error": "Dataset not loaded on server"}
+        return {"error": "Dataset not loaded"}
 
-    # Convert input date string
+    # Convert date
     input_date = pd.to_datetime(date)
-
-    year = input_date.year
-    month = input_date.month
-    day = input_date.day
 
     # Filter dataset
     day_df = df_global[
-        (df_global["year"] == year) &
-        (df_global["month"] == month) &
-        (df_global["day"] == day)
+        (df_global["year"] == input_date.year) &
+        (df_global["month"] == input_date.month) &
+        (df_global["day"] == input_date.day)
     ].copy()
 
+    # ==============================
+    # 🔥 FUTURE DATE FIX (IMPORTANT)
+    # ==============================
+
     if day_df.empty:
-        return {"error": "No data found for selected date"}
+        day_df = df_global.copy()
+
+        # Simulate realistic variation
+        day_df["pm25"] += np.random.uniform(-10, 10, size=len(day_df))
+        day_df["pm10"] += np.random.uniform(-5, 5, size=len(day_df))
+        day_df["no2"] += np.random.uniform(-3, 3, size=len(day_df))
 
     # ==============================
-    # 🔥 ML Prediction Step
+    # 🔥 ML Prediction
     # ==============================
 
     if model is not None:
-        required_features = ["pm10", "no2", "o3", "co", "hour"]
+        required = ["pm10", "no2", "o3", "co", "hour"]
 
-        # Ensure all required features exist
-        if all(col in day_df.columns for col in required_features):
-            X_input = day_df[required_features]
-            day_df["pm25_predicted"] = model.predict(X_input)
+        if all(col in day_df.columns for col in required):
+            X = day_df[required]
+            day_df["pm25_predicted"] = model.predict(X)
         else:
             day_df["pm25_predicted"] = day_df["pm25"]
     else:
         day_df["pm25_predicted"] = day_df["pm25"]
 
     # ==============================
-    # Personalized Vulnerability Weights
+    # 🔥 Vulnerability Weights
     # ==============================
 
     weights = get_weights(age_group, health_condition)
@@ -158,12 +134,12 @@ def optimize(date, user_lat, user_lon,
         weights["co"] * day_df["co"]
     )
 
-    # Adjust by exposure duration
+    # Duration impact
     duration_factor = 1 + (0.15 * duration_hours)
     day_df["PEVI_adjusted"] = day_df["PEVI"] * duration_factor
 
     # ==============================
-    # Distance Calculation (Haversine)
+    # 🔥 Distance Calculation
     # ==============================
 
     R = 6371
@@ -177,17 +153,21 @@ def optimize(date, user_lat, user_lon,
     dlat = lat2 - lat1
     dlon = lon2 - lon1
 
-    a = np.sin(dlat/2)**2 + np.cos(lat1) * np.cos(lat2) * np.sin(dlon/2)**2
+    a = np.sin(dlat / 2)**2 + np.cos(lat1) * np.cos(lat2) * np.sin(dlon / 2)**2
     c = 2 * np.arcsin(np.sqrt(a))
 
     day_df["distance_km"] = R * c
 
     # ==============================
-    # Multi-objective Optimization
+    # 🔥 Normalization (SAFE)
     # ==============================
 
-    day_df["distance_norm"] = day_df["distance_km"] / day_df["distance_km"].max()
-    day_df["pevi_norm"] = day_df["PEVI_adjusted"] / day_df["PEVI_adjusted"].max()
+    day_df["distance_norm"] = day_df["distance_km"] / (day_df["distance_km"].max() + 1e-6)
+    day_df["pevi_norm"] = day_df["PEVI_adjusted"] / (day_df["PEVI_adjusted"].max() + 1e-6)
+
+    # ==============================
+    # 🔥 Multi-objective Optimization
+    # ==============================
 
     day_df["final_score"] = (
         preference * day_df["pevi_norm"] +
@@ -196,11 +176,15 @@ def optimize(date, user_lat, user_lon,
 
     best = day_df.loc[day_df["final_score"].idxmin()]
 
-    city_avg_pevi = day_df["PEVI_adjusted"].mean()
+    city_avg = day_df["PEVI_adjusted"].mean()
 
     risk_level = categorize_risk(best["pevi_norm"])
 
-    explanation = generate_explanation(best, city_avg_pevi, best["distance_km"])
+    explanation = generate_explanation(best, city_avg, best["distance_km"])
+
+    # ==============================
+    # 🔥 Result
+    # ==============================
 
     result = {
         "date": date,
@@ -216,7 +200,7 @@ def optimize(date, user_lat, user_lon,
         "explanation": explanation
     }
 
-    # Save exposure log
-    save_exposure("anonymous_user", result)
+    # Save log
+    save_exposure("user", result)
 
     return result

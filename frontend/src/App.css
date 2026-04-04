@@ -1,0 +1,65 @@
+body {
+  margin: 0;
+  font-family: 'Orbitron', sans-serif;
+  background: radial-gradient(circle at top, #0f172a, #020617);
+  color: #e2e8f0;
+}
+
+.container {
+  text-align: center;
+  padding: 30px;
+}
+
+h1 {
+  font-size: 32px;
+  color: #38bdf8;
+  text-shadow: 0 0 10px #38bdf8;
+}
+
+.form {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+input, select, button {
+  padding: 10px;
+  border-radius: 10px;
+  border: none;
+  background: rgba(255,255,255,0.05);
+  color: white;
+  backdrop-filter: blur(10px);
+}
+
+button {
+  background: linear-gradient(45deg, #3b82f6, #06b6d4);
+  box-shadow: 0 0 10px #06b6d4;
+  cursor: pointer;
+}
+
+button:hover {
+  transform: scale(1.05);
+}
+
+.result-card, .analytics-card {
+  background: rgba(255,255,255,0.05);
+  backdrop-filter: blur(15px);
+  border-radius: 15px;
+  padding: 20px;
+  margin: 20px auto;
+  width: 70%;
+}
+.result-card {
+  transition: all 0.3s ease;
+}
+
+.result-card:hover {
+  transform: scale(1.02);
+  box-shadow: 0 0 25px #00f2ff;
+}
+
+.analytics-card {
+  box-shadow: 0 0 40px rgba(0, 255, 255, 0.1);
+}
