@@ -6,9 +6,10 @@ from .vulnerability_engine import get_weights
 from .explanation_engine import generate_explanation
 from .models import ExposureLog
 from .database import SessionLocal
+from .prediction_engine import predict_future
 
 # ==============================
-# 🔥 Paths
+# Paths
 # ==============================
 
 BASE_DIR = os.path.dirname(__file__)
@@ -16,7 +17,7 @@ MODEL_PATH = os.path.join(BASE_DIR, "xgboost_pm25_model.json")
 DATA_PATH = os.path.join(BASE_DIR, "delhi_forecasting_dataset.csv")
 
 # ==============================
-# 🔥 Load Dataset
+# Load Dataset
 # ==============================
 
 if os.path.exists(DATA_PATH):
@@ -27,7 +28,7 @@ else:
     print("❌ Dataset not found")
 
 # ==============================
-# 🔥 Load Model
+# Load Model
 # ==============================
 
 if os.path.exists(MODEL_PATH):
@@ -36,16 +37,16 @@ if os.path.exists(MODEL_PATH):
     print("✅ XGBoost model loaded")
 else:
     model = None
-    print("⚠️ Model not found, using raw PM2.5")
+    print("⚠️ Model not found, using fallback")
 
 # ==============================
-# 🔥 Risk Categorization (FIXED)
+# 🔥 BETTER RISK CLASSIFICATION
 # ==============================
 
 def categorize_risk(score):
-    if score < 0.40:
+    if score < 0.33:
         return "Safe"
-    elif score < 0.75:
+    elif score < 0.66:
         return "Moderate"
     else:
         return "Avoid"
@@ -71,7 +72,7 @@ def save_exposure(user_id, result):
     db.close()
 
 # ==============================
-# 🔥 Main Optimization Function
+# 🔥 MAIN OPTIMIZATION
 # ==============================
 
 def optimize(date, user_lat, user_lon,
@@ -83,10 +84,12 @@ def optimize(date, user_lat, user_lon,
     if df_global is None:
         return {"error": "Dataset not loaded"}
 
-    # Convert date
     input_date = pd.to_datetime(date)
 
-    # Filter dataset
+    # ==============================
+    # FILTER DATA
+    # ==============================
+
     day_df = df_global[
         (df_global["year"] == input_date.year) &
         (df_global["month"] == input_date.month) &
@@ -94,19 +97,21 @@ def optimize(date, user_lat, user_lon,
     ].copy()
 
     # ==============================
-    # 🔥 FUTURE DATE FIX (IMPORTANT)
+    # 🔥 FUTURE DATE HANDLING (REAL FIX)
     # ==============================
 
     if day_df.empty:
-        day_df = df_global.copy()
+        print("⚠️ Using prediction model for future date")
 
-        # Simulate realistic variation
-        day_df["pm25"] += np.random.uniform(-10, 10, size=len(day_df))
-        day_df["pm10"] += np.random.uniform(-5, 5, size=len(day_df))
-        day_df["no2"] += np.random.uniform(-3, 3, size=len(day_df))
+        day_df = predict_future(df_global, date)
+
+        # Add slight randomness for realism
+        day_df["pm25"] += np.random.uniform(-5, 5, size=len(day_df))
+        day_df["pm10"] += np.random.uniform(-3, 3, size=len(day_df))
+        day_df["no2"] += np.random.uniform(-2, 2, size=len(day_df))
 
     # ==============================
-    # 🔥 ML Prediction
+    # 🔥 ML PREDICTION
     # ==============================
 
     if model is not None:
@@ -121,7 +126,7 @@ def optimize(date, user_lat, user_lon,
         day_df["pm25_predicted"] = day_df["pm25"]
 
     # ==============================
-    # 🔥 Vulnerability Weights
+    # 🔥 VULNERABILITY WEIGHTS
     # ==============================
 
     weights = get_weights(age_group, health_condition)
@@ -139,7 +144,7 @@ def optimize(date, user_lat, user_lon,
     day_df["PEVI_adjusted"] = day_df["PEVI"] * duration_factor
 
     # ==============================
-    # 🔥 Distance Calculation
+    # 🔥 DISTANCE CALCULATION
     # ==============================
 
     R = 6371
@@ -159,14 +164,19 @@ def optimize(date, user_lat, user_lon,
     day_df["distance_km"] = R * c
 
     # ==============================
-    # 🔥 Normalization (SAFE)
+    # 🔥 NORMALIZATION (IMPORTANT FIX)
     # ==============================
 
-    day_df["distance_norm"] = day_df["distance_km"] / (day_df["distance_km"].max() + 1e-6)
-    day_df["pevi_norm"] = day_df["PEVI_adjusted"] / (day_df["PEVI_adjusted"].max() + 1e-6)
+    day_df["distance_norm"] = (
+        day_df["distance_km"] - day_df["distance_km"].min()
+    ) / (day_df["distance_km"].max() - day_df["distance_km"].min() + 1e-6)
+
+    day_df["pevi_norm"] = (
+        day_df["PEVI_adjusted"] - day_df["PEVI_adjusted"].min()
+    ) / (day_df["PEVI_adjusted"].max() - day_df["PEVI_adjusted"].min() + 1e-6)
 
     # ==============================
-    # 🔥 Multi-objective Optimization
+    # 🔥 FINAL OPTIMIZATION
     # ==============================
 
     day_df["final_score"] = (
@@ -183,7 +193,7 @@ def optimize(date, user_lat, user_lon,
     explanation = generate_explanation(best, city_avg, best["distance_km"])
 
     # ==============================
-    # 🔥 Result
+    # RESULT
     # ==============================
 
     result = {
@@ -200,7 +210,6 @@ def optimize(date, user_lat, user_lon,
         "explanation": explanation
     }
 
-    # Save log
     save_exposure("user", result)
 
     return result

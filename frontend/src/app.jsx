@@ -225,8 +225,7 @@ function App() {
             <p><strong>Best Hour:</strong> {result.recommended_hour}:00</p>
             <p><strong>Safe Window:</strong> {result.safe_window}</p>
             <p><strong>PEVI Score:</strong> {result.PEVI_score}</p>
-            <p><strong>Distance:</strong> {result.distance_km} km</p>
-
+            <p><strong>Distance from your location:</strong> {result.distance_km} km</p>
             <p>
               <strong>Risk:</strong>{" "}
               <span style={{ color: riskColor }}>
