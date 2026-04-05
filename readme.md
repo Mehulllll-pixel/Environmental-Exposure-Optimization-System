@@ -63,7 +63,3 @@ An AI-powered web application that helps users minimize environmental exposure r
    - Safe exposure window  
    - Risk level  
    - AI insights  
-
----
-
-## 📦 Project Structure
